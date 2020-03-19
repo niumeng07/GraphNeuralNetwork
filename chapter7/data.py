@@ -1,11 +1,13 @@
+# -*-coding:utf8-*-
+from __future__ import print_function
 import os
 import os.path as osp
 import pickle
-import numpy as np
 import itertools
-import scipy.sparse as sp
 import urllib
 from collections import namedtuple
+import scipy.sparse as sp
+import numpy as np
 
 
 Data = namedtuple('Data', ['x', 'y', 'adjacency_dict',
@@ -17,7 +19,7 @@ class CoraData(object):
     filenames = ["ind.cora.{}".format(name) for name in
                  ['x', 'tx', 'allx', 'y', 'ty', 'ally', 'graph', 'test.index']]
 
-    def __init__(self, data_root="cora", rebuild=False):
+    def __init__(self, data_root="../data/cora", rebuild=False):
         """Cora数据，包括数据下载，处理，加载等功能
         当数据的缓存文件存在时，将使用缓存文件，否则将下载、进行处理，并缓存到磁盘
 
@@ -120,11 +122,10 @@ class CoraData(object):
         name = osp.basename(path)
         if name == "ind.cora.test.index":
             out = np.genfromtxt(path, dtype="int64")
-            return out
         else:
             out = pickle.load(open(path, "rb"), encoding="latin1")
             out = out.toarray() if hasattr(out, "toarray") else out
-            return out
+        return out
 
     @staticmethod
     def download_data(url, save_path):

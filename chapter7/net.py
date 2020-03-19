@@ -1,3 +1,5 @@
+# -*-coding:utf8-*-
+from __future__ import print_function
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,7 +7,7 @@ import torch.nn.init as init
 
 
 class NeighborAggregator(nn.Module):
-    def __init__(self, input_dim, output_dim, 
+    def __init__(self, input_dim, output_dim,
                  use_bias=False, aggr_method="mean"):
         """聚合节点邻居
 
@@ -24,7 +26,7 @@ class NeighborAggregator(nn.Module):
         if self.use_bias:
             self.bias = nn.Parameter(torch.Tensor(self.output_dim))
         self.reset_parameters()
-    
+
     def reset_parameters(self):
         init.kaiming_uniform_(self.weight)
         if self.use_bias:
@@ -40,7 +42,7 @@ class NeighborAggregator(nn.Module):
         else:
             raise ValueError("Unknown aggr type, expected sum, max, or mean, but got {}"
                              .format(self.aggr_method))
-        
+
         neighbor_hidden = torch.matmul(aggr_neighbor, self.weight)
         if self.use_bias:
             neighbor_hidden += self.bias
@@ -50,7 +52,7 @@ class NeighborAggregator(nn.Module):
     def extra_repr(self):
         return 'in_features={}, out_features={}, aggr_method={}'.format(
             self.input_dim, self.output_dim, self.aggr_method)
-    
+
 
 class SageGCN(nn.Module):
     def __init__(self, input_dim, hidden_dim,
@@ -80,14 +82,14 @@ class SageGCN(nn.Module):
                                              aggr_method=aggr_neighbor_method)
         self.weight = nn.Parameter(torch.Tensor(input_dim, hidden_dim))
         self.reset_parameters()
-    
+
     def reset_parameters(self):
         init.kaiming_uniform_(self.weight)
 
     def forward(self, src_node_features, neighbor_node_features):
         neighbor_hidden = self.aggregator(neighbor_node_features)
         self_hidden = torch.matmul(src_node_features, self.weight)
-        
+
         if self.aggr_hidden_method == "sum":
             hidden = self_hidden + neighbor_hidden
         elif self.aggr_hidden_method == "concat":
@@ -96,9 +98,8 @@ class SageGCN(nn.Module):
             raise ValueError("Expected sum or concat, got {}"
                              .format(self.aggr_hidden))
         if self.activation:
-            return self.activation(hidden)
-        else:
-            return hidden
+            hidden = self.activation(hidden)
+        return hidden
 
     def extra_repr(self):
         output_dim = self.hidden_dim if self.aggr_hidden_method == "sum" else self.hidden_dim * 2

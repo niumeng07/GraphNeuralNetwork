@@ -1,16 +1,17 @@
+# -*-coding:utf8-*-
 """
 基于Cora的GraphSage示例
 """
+from __future__ import print_function
+from collections import namedtuple
 import torch
-
-import numpy as np
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 from net import GraphSage
 from data import CoraData
 from sampling import multihop_sampling
 
-from collections import namedtuple
 INPUT_DIM = 1433    # 输入维度
 # Note: 采样的邻居阶数需要与GCN的层数保持一致
 HIDDEN_DIM = [128, 7]   # 隐藏单元节点数
@@ -69,4 +70,3 @@ def test():
 
 if __name__ == '__main__':
     train()
-

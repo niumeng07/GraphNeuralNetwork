@@ -1,14 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# <h1>Table of Contents<span class="tocSkip"></span></h1>
-# <div class="toc"><ul class="toc-item"><li><span><a href="#基于Cora数据集的GCN节点分类" data-toc-modified-id="基于Cora数据集的GCN节点分类-1"><span class="toc-item-num">1&nbsp;&nbsp;</span>基于Cora数据集的GCN节点分类</a></span><ul class="toc-item"><li><span><a href="#数据准备" data-toc-modified-id="数据准备-1.1"><span class="toc-item-num">1.1&nbsp;&nbsp;</span>数据准备</a></span></li><li><span><a href="#图卷积层定义" data-toc-modified-id="图卷积层定义-1.2"><span class="toc-item-num">1.2&nbsp;&nbsp;</span>图卷积层定义</a></span></li><li><span><a href="#模型定义" data-toc-modified-id="模型定义-1.3"><span class="toc-item-num">1.3&nbsp;&nbsp;</span>模型定义</a></span></li><li><span><a href="#模型训练" data-toc-modified-id="模型训练-1.4"><span class="toc-item-num">1.4&nbsp;&nbsp;</span>模型训练</a></span></li></ul></li></ul></div>
-
 # # 基于Cora数据集的GCN节点分类
 
-# In[1]:
-
-
+from __future__ import print_function
+from tensorboardX import SummaryWriter
 import itertools
 import os
 import os.path as osp
@@ -16,7 +12,6 @@ import pickle
 import urllib
 from collections import namedtuple
 
-import numpy as np
 import scipy.sparse as sp
 import torch
 import torch.nn as nn
@@ -24,13 +19,10 @@ import torch.nn.functional as F
 import torch.nn.init as init
 import torch.optim as optim
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 # ## 数据准备
-
-# In[2]:
-
-
 Data = namedtuple('Data', ['x', 'y', 'adjacency',
                            'train_mask', 'val_mask', 'test_mask'])
 
@@ -40,7 +32,7 @@ class CoraData(object):
     filenames = ["ind.cora.{}".format(name) for name in
                  ['x', 'tx', 'allx', 'y', 'ty', 'ally', 'graph', 'test.index']]
 
-    def __init__(self, data_root="cora", rebuild=False):
+    def __init__(self, data_root="../data/cora", rebuild=False):
         """Cora数据，包括数据下载，处理，加载等功能
         当数据的缓存文件存在时，将使用缓存文件，否则将下载、进行处理，并缓存到磁盘
 
@@ -72,7 +64,7 @@ class CoraData(object):
             with open(save_file, "wb") as f:
                 pickle.dump(self.data, f)
             print("Cached file: {}".format(save_file))
-    
+
     @property
     def data(self):
         """返回Data数据对象，包括x, y, adjacency, train_mask, val_mask, test_mask"""
@@ -132,9 +124,9 @@ class CoraData(object):
         # 去除重复的边
         edge_index = list(k for k, _ in itertools.groupby(sorted(edge_index)))
         edge_index = np.asarray(edge_index)
-        adjacency = sp.coo_matrix((np.ones(len(edge_index)), 
+        adjacency = sp.coo_matrix((np.ones(len(edge_index)),
                                    (edge_index[:, 0], edge_index[:, 1])),
-                    shape=(num_nodes, num_nodes), dtype="float32")
+                                  shape=(num_nodes, num_nodes), dtype="float32")
         return adjacency
 
     @staticmethod
@@ -143,11 +135,10 @@ class CoraData(object):
         name = osp.basename(path)
         if name == "ind.cora.test.index":
             out = np.genfromtxt(path, dtype="int64")
-            return out
         else:
             out = pickle.load(open(path, "rb"), encoding="latin1")
             out = out.toarray() if hasattr(out, "toarray") else out
-            return out
+        return out
 
     @staticmethod
     def download_data(url, save_path):
@@ -172,10 +163,6 @@ class CoraData(object):
 
 
 # ## 图卷积层定义
-
-# In[3]:
-
-
 class GraphConvolution(nn.Module):
     def __init__(self, input_dim, output_dim, use_bias=True):
         """图卷积：L*X*\theta
@@ -207,8 +194,8 @@ class GraphConvolution(nn.Module):
 
     def forward(self, adjacency, input_feature):
         """邻接矩阵是稀疏矩阵，因此在计算时使用稀疏矩阵乘法
-    
-        Args: 
+
+        Args:
         -------
             adjacency: torch.sparse.FloatTensor
                 邻接矩阵
@@ -222,51 +209,45 @@ class GraphConvolution(nn.Module):
         return output
 
     def __repr__(self):
-        return self.__class__.__name__ + ' ('             + str(self.in_features) + ' -> '             + str(self.out_features) + ')'
+        return self.__class__.__name__ + ' (' + str(self.in_features) + ' -> ' + str(self.out_features) + ')'
 
 
 # ## 模型定义
-
-# In[4]:
-
-
 class GcnNet(nn.Module):
     """
     定义一个包含两层GraphConvolution的模型
     """
+
     def __init__(self, input_dim=1433):
         super(GcnNet, self).__init__()
-        self.gcn1 = GraphConvolution(input_dim, 16)
-        self.gcn2 = GraphConvolution(16, 7)
-    
+        self.gcn1 = GraphConvolution(input_dim, 16)  # Input->Hidden
+        self.gcn2 = GraphConvolution(16, 7)          # Hidden->Output
+
     def forward(self, adjacency, feature):
-        h = F.relu(self.gcn1(adjacency, feature))
-        logits = self.gcn2(adjacency, h)
+        h = F.relu(self.gcn1(adjacency, feature))  # call forward of GraphConvolution
+        logits = self.gcn2(adjacency, h)           # call forward of GraphConvolution
         return logits
 
 
 # ## 模型训练
 
-# In[5]:
-
-
 # 超参数定义
 learning_rate = 0.1
 weight_decay = 5e-4
-epochs = 200
-
-
-# In[6]:
+epochs = 50
 
 
 # 模型定义：Model, Loss, Optimizer
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model = GcnNet().to(device)
+if os.path.isfile('model/model.pkl'):
+    print('load model from model/model.pkl')
+    model = torch.load('model/model.pkl')
+else:
+    print('create model.')
+    model = GcnNet().to(device)
+
 criterion = nn.CrossEntropyLoss().to(device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
-
-# In[7]:
 
 
 # 加载数据，并转换为torch.Tensor
@@ -278,15 +259,14 @@ tensor_train_mask = torch.from_numpy(dataset.train_mask).to(device)
 tensor_val_mask = torch.from_numpy(dataset.val_mask).to(device)
 tensor_test_mask = torch.from_numpy(dataset.test_mask).to(device)
 normalize_adjacency = CoraData.normalization(dataset.adjacency)   # 规范化邻接矩阵
-indices = torch.from_numpy(np.asarray([normalize_adjacency.row, 
+indices = torch.from_numpy(np.asarray([normalize_adjacency.row,
                                        normalize_adjacency.col]).astype('int64')).long()
 values = torch.from_numpy(normalize_adjacency.data.astype(np.float32))
-tensor_adjacency = torch.sparse.FloatTensor(indices, values, 
+tensor_adjacency = torch.sparse.FloatTensor(indices, values,
                                             (2708, 2708)).to(device)
 
 
-# In[8]:
-
+summary_writer = SummaryWriter(comment='LeNet')
 
 # 训练主体函数
 def train():
@@ -308,11 +288,12 @@ def train():
         val_acc_history.append(val_acc.item())
         print("Epoch {:03d}: Loss {:.4f}, TrainAcc {:.4}, ValAcc {:.4f}".format(
             epoch, loss.item(), train_acc.item(), val_acc.item()))
-    
+
+        summary_writer.add_scalar('Loss', loss.item(), epoch)
+        summary_writer.add_scalar('TrainAcc', train_acc.item(), epoch)
+        summary_writer.add_scalar('ValAcc', val_acc.item(), epoch)
+
     return loss_history, val_acc_history
-
-
-# In[9]:
 
 
 # 测试函数
@@ -326,44 +307,32 @@ def test(mask):
     return accuarcy, test_mask_logits.cpu().numpy(), tensor_y[mask].cpu().numpy()
 
 
-# In[13]:
-
-
 def plot_loss_with_acc(loss_history, val_acc_history):
     fig = plt.figure()
     ax1 = fig.add_subplot(111)
     ax1.plot(range(len(loss_history)), loss_history,
              c=np.array([255, 71, 90]) / 255.)
     plt.ylabel('Loss')
-    
+
     ax2 = fig.add_subplot(111, sharex=ax1, frameon=False)
     ax2.plot(range(len(val_acc_history)), val_acc_history,
              c=np.array([79, 179, 255]) / 255.)
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
     plt.ylabel('ValAcc')
-    
+
     plt.xlabel('Epoch')
     plt.title('Training Loss & Validation Accuracy')
-    plt.show()
+    # plt.show()
+    plt.savefig('./pic/acc.jpg')
 
 
-# In[ ]:
-
-
+print('start train.')
 loss, val_acc = train()
+print('train finish.')
 test_acc, test_logits, test_label = test(tensor_test_mask)
 print("Test accuarcy: ", test_acc.item())
 
-
-# In[14]:
-
-
 plot_loss_with_acc(loss, val_acc)
 
-
-# In[ ]:
-
-
-
-
+torch.save(model, './model/model.pkl')

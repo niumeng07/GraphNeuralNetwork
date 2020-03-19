@@ -1,15 +1,17 @@
+# -*-coding:utf8-*-
+from __future__ import print_function
 import numpy as np
 
 
 def sampling(src_nodes, sample_num, neighbor_table):
     """根据源节点采样指定数量的邻居节点，注意使用的是有放回的采样；
     某个节点的邻居节点数量少于采样数量时，采样结果出现重复的节点
-    
+
     Arguments:
         src_nodes {list, ndarray} -- 源节点列表
         sample_num {int} -- 需要采样的节点数
         neighbor_table {dict} -- 节点到其邻居节点的映射表
-    
+
     Returns:
         np.ndarray -- 采样结果构成的列表
     """
@@ -23,12 +25,12 @@ def sampling(src_nodes, sample_num, neighbor_table):
 
 def multihop_sampling(src_nodes, sample_nums, neighbor_table):
     """根据源节点进行多阶采样
-    
+
     Arguments:
         src_nodes {list, np.ndarray} -- 源节点id
         sample_nums {list of int} -- 每一阶需要采样的个数
         neighbor_table {dict} -- 节点到其邻居节点的映射
-    
+
     Returns:
         [list of ndarray] -- 每一阶采样的结果
     """

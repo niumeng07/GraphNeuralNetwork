@@ -1,18 +1,22 @@
+# -*-coding:utf8-*-
+from __future__ import print_function
 import os
 import urllib
+from zipfile import ZipFile
+import pickle
+import scipy.sparse as sp
+
 import torch
 import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
 import torch.utils.data as data
-import numpy as np
-import scipy.sparse as sp
-from zipfile import ZipFile
+
 from sklearn.model_selection import train_test_split
-import pickle
 import pandas as pd
-import torch_scatter
 import torch.optim as optim
+import numpy as np
+import torch_scatter
 
 
 def normalization(adjacency):
@@ -37,11 +41,11 @@ def normalization(adjacency):
 
 def filter_adjacency(adjacency, mask):
     """根据掩码mask对图结构进行更新
-    
+
     Args:
         adjacency: torch.sparse.FloatTensor, 池化之前的邻接矩阵
         mask: torch.Tensor(dtype=torch.bool), 节点掩码向量
-    
+
     Returns:
         torch.sparse.FloatTensor, 池化之后归一化邻接矩阵
     """
@@ -71,7 +75,7 @@ def global_avg_pool(x, graph_indicator):
 
 class DDDataset(object):
     url = "https://ls11-www.cs.tu-dortmund.de/people/morris/graphkerneldatasets/DD.zip"
-    
+
     def __init__(self, data_root="data", train_size=0.8):
         self.data_root = data_root
         self.maybe_download()
@@ -90,7 +94,7 @@ class DDDataset(object):
                                                    train_size=train_size,
                                                    random_state=1234)
         return train_index, test_index
-    
+
     def __getitem__(self, index):
         mask = self.graph_indicator == index
         node_labels = self.node_labels[mask]
@@ -98,26 +102,26 @@ class DDDataset(object):
         graph_labels = self.graph_labels[index]
         adjacency = self.sparse_adjacency[mask, :][:, mask]
         return adjacency, node_labels, graph_indicator, graph_labels
-    
+
     def __len__(self):
         return len(self.graph_labels)
-    
+
     def read_data(self):
         data_dir = os.path.join(self.data_root, "DD")
         print("Loading DD_A.txt")
         adjacency_list = np.genfromtxt(os.path.join(data_dir, "DD_A.txt"),
                                        dtype=np.int64, delimiter=',') - 1
         print("Loading DD_node_labels.txt")
-        node_labels = np.genfromtxt(os.path.join(data_dir, "DD_node_labels.txt"), 
+        node_labels = np.genfromtxt(os.path.join(data_dir, "DD_node_labels.txt"),
                                     dtype=np.int64) - 1
         print("Loading DD_graph_indicator.txt")
-        graph_indicator = np.genfromtxt(os.path.join(data_dir, "DD_graph_indicator.txt"), 
+        graph_indicator = np.genfromtxt(os.path.join(data_dir, "DD_graph_indicator.txt"),
                                         dtype=np.int64) - 1
         print("Loading DD_graph_labels.txt")
-        graph_labels = np.genfromtxt(os.path.join(data_dir, "DD_graph_labels.txt"), 
+        graph_labels = np.genfromtxt(os.path.join(data_dir, "DD_graph_labels.txt"),
                                      dtype=np.int64) - 1
         num_nodes = len(node_labels)
-        sparse_adjacency = sp.coo_matrix((np.ones(len(adjacency_list)), 
+        sparse_adjacency = sp.coo_matrix((np.ones(len(adjacency_list)),
                                           (adjacency_list[:, 0], adjacency_list[:, 1])),
                                          shape=(num_nodes, num_nodes), dtype=np.float32)
         print("Number of nodes: ", num_nodes)
@@ -125,7 +129,7 @@ class DDDataset(object):
         # node_infos["node_labels"] = node_labels
         # node_infos["graph_indicator"] = graph_indicator
         return sparse_adjacency, node_labels, graph_indicator, graph_labels
-    
+
     def maybe_download(self):
         save_path = os.path.join(self.data_root)
         if not os.path.exists(save_path):
@@ -135,7 +139,7 @@ class DDDataset(object):
             with ZipFile(zipfilename, "r") as zipobj:
                 zipobj.extractall(os.path.join(self.data_root))
                 print("Extracting data from {}".format(zipfilename))
-    
+
     @staticmethod
     def download_data(url, save_path):
         """数据下载工具，当原始数据不存在时将会进行下载"""
@@ -199,22 +203,22 @@ class SelfAttentionPooling(nn.Module):
         self.keep_ratio = keep_ratio
         self.activation = activation
         self.attn_gcn = GraphConvolution(input_dim, 1)
-    
+
     def forward(self, adjacency, input_feature, graph_indicator):
         attn_score = self.attn_gcn(adjacency, input_feature).squeeze()
         attn_score = self.activation(attn_score)
-        
+
         mask = top_rank(attn_score, graph_indicator, self.keep_ratio)
         hidden = input_feature[mask] * attn_score[mask].view(-1, 1)
         mask_graph_indicator = graph_indicator[mask]
         mask_adjacency = filter_adjacency(adjacency, mask)
         return hidden, mask_graph_indicator, mask_adjacency
-    
-    
+
+
 def top_rank(attention_score, graph_indicator, keep_ratio):
     """基于给定的attention_score, 对每个图进行pooling操作.
     为了直观体现pooling过程，我们将每个图单独进行池化，最后再将它们级联起来进行下一步计算
-    
+
     Arguments:
     ----------
         attention_score：torch.Tensor
@@ -231,19 +235,19 @@ def top_rank(attention_score, graph_indicator, keep_ratio):
         graph_attn_score = attention_score[graph_indicator == graph_id]
         graph_node_num = len(graph_attn_score)
         graph_mask = attention_score.new_zeros((graph_node_num,),
-                                                dtype=torch.bool)
+                                               dtype=torch.bool)
         keep_graph_node_num = int(keep_ratio * graph_node_num)
         _, sorted_index = graph_attn_score.sort(descending=True)
         graph_mask[sorted_index[:keep_graph_node_num]] = True
         mask = torch.cat((mask, graph_mask))
-    
+
     return mask
 
 
 class ModelA(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_classes=2):
         """图分类模型结构A
-        
+
         Args:
         ----
             input_dim: int, 输入特征的维度
@@ -254,7 +258,7 @@ class ModelA(nn.Module):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
-        
+
         self.gcn1 = GraphConvolution(input_dim, hidden_dim)
         self.gcn2 = GraphConvolution(hidden_dim, hidden_dim)
         self.gcn3 = GraphConvolution(hidden_dim, hidden_dim)
@@ -267,30 +271,30 @@ class ModelA(nn.Module):
         gcn1 = F.relu(self.gcn1(adjacency, input_feature))
         gcn2 = F.relu(self.gcn2(adjacency, gcn1))
         gcn3 = F.relu(self.gcn3(adjacency, gcn2))
-        
+
         gcn_feature = torch.cat((gcn1, gcn2, gcn3), dim=1)
         pool, pool_graph_indicator, pool_adjacency = self.pool(adjacency, gcn_feature,
                                                                graph_indicator)
-        
+
         readout = torch.cat((global_avg_pool(pool, pool_graph_indicator),
                              global_max_pool(pool, pool_graph_indicator)), dim=1)
-        
+
         fc1 = F.relu(self.fc1(readout))
         fc2 = F.relu(self.fc2(fc1))
         logits = self.fc3(fc2)
-        
+
         return logits
 
 
 class ModelB(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_classes=2):
         """图分类模型结构
-        
+
         Arguments:
         ----------
             input_dim {int} -- 输入特征的维度
             hidden_dim {int} -- 隐藏层单元数
-        
+
         Keyword Arguments:
         ----------
             num_classes {int} -- 分类类别数 (default: {2})
@@ -299,21 +303,21 @@ class ModelB(nn.Module):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
-        
+
         self.gcn1 = GraphConvolution(input_dim, hidden_dim)
         self.pool1 = SelfAttentionPooling(hidden_dim, 0.5)
         self.gcn2 = GraphConvolution(hidden_dim, hidden_dim)
         self.pool2 = SelfAttentionPooling(hidden_dim, 0.5)
         self.gcn3 = GraphConvolution(hidden_dim, hidden_dim)
         self.pool3 = SelfAttentionPooling(hidden_dim, 0.5)
-        
+
         self.mlp = nn.Sequential(
             nn.Linear(hidden_dim * 2, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(), 
+            nn.ReLU(),
             nn.Linear(hidden_dim // 2, num_classes))
-    
+
     def forward(self, adjacency, input_feature, graph_indicator):
         gcn1 = F.relu(self.gcn1(adjacency, input_feature))
         pool1, pool1_graph_indicator, pool1_adjacency = \
@@ -322,7 +326,7 @@ class ModelB(nn.Module):
             [global_avg_pool(pool1, pool1_graph_indicator),
              global_max_pool(pool1, pool1_graph_indicator)],
             dim=1)
-        
+
         gcn2 = F.relu(self.gcn2(pool1_adjacency, pool1))
         pool2, pool2_graph_indicator, pool2_adjacency = \
             self.pool2(pool1_adjacency, gcn2, pool1_graph_indicator)
@@ -338,8 +342,8 @@ class ModelB(nn.Module):
             [global_avg_pool(pool3, pool3_graph_indicator),
              global_max_pool(pool3, pool3_graph_indicator)],
             dim=1)
-        
+
         readout = global_pool1 + global_pool2 + global_pool3
-        
+
         logits = self.mlp(readout)
         return logits

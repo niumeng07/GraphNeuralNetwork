@@ -1,4 +1,5 @@
 .idea
-cora
 .ipynb_checkpoints
 __pycache__
+*.swp
+runs
