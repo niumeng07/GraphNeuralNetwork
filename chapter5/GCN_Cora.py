@@ -21,6 +21,14 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 import numpy as np
 
+# 超参数定义
+learning_rate = 0.1
+weight_decay = 5e-4
+epochs = 50
+
+pre_model_path = 'model/model.pkl'
+save_model_path = 'model/model.pkl'
+
 
 # ## 数据准备
 Data = namedtuple('Data', ['x', 'y', 'adjacency',
@@ -231,17 +239,11 @@ class GcnNet(nn.Module):
 
 # ## 模型训练
 
-# 超参数定义
-learning_rate = 0.1
-weight_decay = 5e-4
-epochs = 50
-
-
 # 模型定义：Model, Loss, Optimizer
 device = "cuda" if torch.cuda.is_available() else "cpu"
-if os.path.isfile('model/model.pkl'):
-    print('load model from model/model.pkl')
-    model = torch.load('model/model.pkl')
+if os.path.isfile(pre_model_path):
+    print('load model from {}'.format(pre_model_path))
+    model = torch.load(pre_model_path)
 else:
     print('create model.')
     model = GcnNet().to(device)
@@ -333,6 +335,9 @@ print('train finish.')
 test_acc, test_logits, test_label = test(tensor_test_mask)
 print("Test accuarcy: ", test_acc.item())
 
-plot_loss_with_acc(loss, val_acc)
+# 用tensorboard
+# plot_loss_with_acc(loss, val_acc)
 
-torch.save(model, './model/model.pkl')
+torch.save(model, save_model_path)
+
+# summary_writer.add_graph(model, (tensor_adjacency, tensor_x, ))

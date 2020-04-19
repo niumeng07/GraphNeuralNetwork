@@ -3,3 +3,5 @@
 __pycache__
 *.swp
 runs
+model
+chapter5/pic
